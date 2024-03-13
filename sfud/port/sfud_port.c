@@ -28,6 +28,25 @@
 
 #include <sfud.h>
 #include <stdarg.h>
+#include "spi.h"
+#include "main.h"
+#include "string.h"
+
+#define NORFLASH_CS_GPIO_PORT W25Q128_CS_GPIO_Port
+#define NORFLASH_CS_GPIO_PIN  W25Q128_CS_Pin
+
+typedef struct {
+    SPI_TypeDef *spix;
+    SPI_HandleTypeDef *spi_handle;
+    GPIO_TypeDef *cs_gpiox;
+    uint16_t cs_gpio_pin;
+} spi_user_data, *spi_user_data_t;
+
+static spi_user_data spi1 = {
+    .spix        = SPI1,
+    .cs_gpiox    = W25Q128_CS_GPIO_Port,
+    .cs_gpio_pin = W25Q128_CS_Pin,
+    .spi_handle  = &hspi1};
 
 static char log_buf[256];
 
@@ -36,24 +55,64 @@ void sfud_log_debug(const char *file, const long line, const char *format, ...);
 /**
  * SPI write data then read data
  */
-static sfud_err spi_write_read(const sfud_spi *spi, const uint8_t *write_buf, size_t write_size, uint8_t *read_buf,
-        size_t read_size) {
-    sfud_err result = SFUD_SUCCESS;
-    uint8_t send_data, read_data;
+static sfud_err spi_write_read(const sfud_spi *spi, uint8_t *write_buf, size_t write_size, uint8_t *read_buf,
+                               size_t read_size)
+{
 
-    /**
-     * add your spi write and read code
-     */
+    sfud_err result         = SFUD_SUCCESS;
+    spi_user_data_t spi_dev = (spi_user_data_t)spi->user_data;
+    HAL_StatusTypeDef state = HAL_OK;
+
+    if (write_size) {
+        SFUD_ASSERT(write_buf);
+    }
+    if (read_size) {
+        SFUD_ASSERT(read_buf);
+    }
+
+    HAL_GPIO_WritePin(spi_dev->cs_gpiox, spi_dev->cs_gpio_pin, GPIO_PIN_RESET);
+
+    if (write_size) {
+        state = HAL_SPI_Transmit(spi_dev->spi_handle, (uint8_t *)write_buf, write_size, 1000);
+        while (HAL_SPI_GetState(spi_dev->spi_handle) != HAL_SPI_STATE_READY)
+            ;
+    }
+
+    if (state != HAL_OK) {
+        goto __exit;
+    }
+
+    if (read_size) {
+        memset((uint8_t *)read_buf, 0xFF, read_size);
+        state = HAL_SPI_Receive(spi_dev->spi_handle, read_buf, read_size, 1000);
+        while (HAL_SPI_GetState(spi_dev->spi_handle) != HAL_SPI_STATE_READY)
+            ;
+    }
+
+__exit:
+
+    HAL_GPIO_WritePin(spi_dev->cs_gpiox, spi_dev->cs_gpio_pin, GPIO_PIN_SET);
 
     return result;
 }
 
+void retry_delay(void)
+{
+    HAL_Delay(1);
+}
+
+/* about 100 uicrosecond delay */
+static void retry_delay_100us(void) {
+    uint32_t delay = 120;
+    while(delay--);
+}
 #ifdef SFUD_USING_QSPI
 /**
  * read flash data by QSPI
  */
 static sfud_err qspi_read(const struct __sfud_spi *spi, uint32_t addr, sfud_qspi_read_cmd_format *qspi_read_cmd_format,
-        uint8_t *read_buf, size_t read_size) {
+                          uint8_t *read_buf, size_t read_size)
+{
     sfud_err result = SFUD_SUCCESS;
 
     /**
@@ -64,7 +123,8 @@ static sfud_err qspi_read(const struct __sfud_spi *spi, uint32_t addr, sfud_qspi
 }
 #endif /* SFUD_USING_QSPI */
 
-sfud_err sfud_spi_port_init(sfud_flash *flash) {
+sfud_err sfud_spi_port_init(sfud_flash *flash)
+{
     sfud_err result = SFUD_SUCCESS;
 
     /**
@@ -81,6 +141,15 @@ sfud_err sfud_spi_port_init(sfud_flash *flash) {
      *    flash->retry.delay = null;
      *    flash->retry.times = 10000; //Required
      */
+    HAL_GPIO_WritePin(spi1.cs_gpiox, spi1.cs_gpio_pin, GPIO_PIN_SET);
+    
+    flash->spi.wr = spi_write_read; // Required
+    // flash->spi.qspi_read = NULL;      // Required when QSPI mode enable
+    flash->spi.lock      = NULL;
+    flash->spi.unlock    = NULL;
+    flash->spi.user_data = &spi1;
+    flash->retry.delay   = retry_delay_100us;
+    flash->retry.times   = 10000; // Required
 
     return result;
 }
@@ -93,7 +162,8 @@ sfud_err sfud_spi_port_init(sfud_flash *flash) {
  * @param format output format
  * @param ... args
  */
-void sfud_log_debug(const char *file, const long line, const char *format, ...) {
+void sfud_log_debug(const char *file, const long line, const char *format, ...)
+{
     va_list args;
 
     /* args point to the first variable parameter */
@@ -101,7 +171,7 @@ void sfud_log_debug(const char *file, const long line, const char *format, ...) 
     printf("[SFUD](%s:%ld) ", file, line);
     /* must use vprintf to print */
     vsnprintf(log_buf, sizeof(log_buf), format, args);
-    printf("%s\n", log_buf);
+    printf("%s\r\n", log_buf);
     va_end(args);
 }
 
@@ -111,7 +181,8 @@ void sfud_log_debug(const char *file, const long line, const char *format, ...) 
  * @param format output format
  * @param ... args
  */
-void sfud_log_info(const char *format, ...) {
+void sfud_log_info(const char *format, ...)
+{
     va_list args;
 
     /* args point to the first variable parameter */
@@ -119,6 +190,6 @@ void sfud_log_info(const char *format, ...) {
     printf("[SFUD]");
     /* must use vprintf to print */
     vsnprintf(log_buf, sizeof(log_buf), format, args);
-    printf("%s\n", log_buf);
+    printf("%s\r\n", log_buf);
     va_end(args);
 }

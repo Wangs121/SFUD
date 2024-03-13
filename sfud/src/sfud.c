@@ -110,6 +110,7 @@ sfud_err sfud_device_init(sfud_flash *flash) {
  * @return result
  */
 sfud_err sfud_init(void) {
+    #if defined(SFUD_USING_SFDP) || defined(SFUD_USING_FLASH_INFO_TABLE)
     sfud_err cur_flash_result = SFUD_SUCCESS, all_flash_result = SFUD_SUCCESS;
     size_t i;
 
@@ -127,6 +128,10 @@ sfud_err sfud_init(void) {
     }
 
     return all_flash_result;
+    #else
+    extern sfud_flash sfud_norflash0;
+    return  sfud_device_init(&sfud_norflash0);
+    #endif
 }
 
 /**

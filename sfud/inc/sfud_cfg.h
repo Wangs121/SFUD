@@ -29,23 +29,23 @@
 #ifndef _SFUD_CFG_H_
 #define _SFUD_CFG_H_
 
-#define SFUD_DEBUG_MODE
+// 输出相关
+// #define SFUD_DEBUG_MODE
+// #define SFUD_INFO_MODE
 
-#define SFUD_USING_SFDP
+// #define SFUD_USING_SFDP
 
-// #define SFUD_USING_FAST_READ
-
-#define SFUD_USING_FLASH_INFO_TABLE
-
+// #define SFUD_USING_FLASH_INFO_TABLE
+// 经过测试，写入0XD00（3.25K）B大小内容三种方式速度几乎没有区别
 enum {
-    SFUD_XXXX_DEVICE_INDEX = 0,
+    SFUD_W25Q128_DEVICE_INDEX = 0,
 };
-
+// #define SFUD_FLASH_DEVICE_TABLE NULL
 #define SFUD_FLASH_DEVICE_TABLE                                                \
 {                                                                              \
-    [SFUD_XXXX_DEVICE_INDEX] = {.name = "XXXX", .spi.name = "SPIX"},           \
+    [SFUD_W25Q128_DEVICE_INDEX] = {.name = "W25Q128JV", .spi.name = "SPI1"},           \
 }
-
-#define SFUD_USING_QSPI
+// W25Q64CV 和W25Q64JV 一样，J表示产品更新
+// #define SFUD_USING_QSPI
 
 #endif /* _SFUD_CFG_H_ */
